@@ -1,21 +1,251 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="pt-BR">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ACHEI!! - Sistema de Achados e Perdidos</title>
+    
     <script src="https://cdn.tailwindcss.com"></script>
-  </head>
-  <body>
-    <div id="root"></div>
-    <script type="module">
-      import React from 'react';
-      import ReactDOM from 'react-dom/client';
-      import AcheiApp from './AcheiApp.jsx';
+    
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body class="min-h-screen bg-[#f4f7fa]">
 
-      ReactDOM.createRoot(document.getElementById('root')).render(
-        React.createElement(React.StrictMode, null, React.createElement(AcheiApp))
-      );
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+
+        const AcheiApp = () => {
+            const [items, setItems] = useState([]);
+            const [search, setSearch] = useState('');
+            const [category, setCategory] = useState('Todos');
+            const [isTokenModalOpen, setIsTokenModalOpen] = useState(false);
+            const [selectedItem, setSelectedItem] = useState(null);
+            const [tokenInput, setTokenInput] = useState('');
+            const [showSuccessModal, setShowSuccessModal] = useState(false);
+            const [loading, setLoading] = useState(false);
+
+            const BACKEND_URL = "https://achei-backend.onrender.com";
+            const navyClass = "bg-[#10345c]";
+
+            // Buscar itens do banco de dados
+            const fetchItems = async () => {
+                try {
+                    const response = await fetch(`${BACKEND_URL}/api/items?category=${category}&search=${search}`);
+                    if (response.ok) {
+                        const data = await response.json();
+                        setItems(data);
+                    }
+                } catch (err) {
+                    console.error("Erro de conexão com o banco:", err);
+                }
+            };
+
+            useEffect(() => {
+                fetchItems();
+            }, [category, search]);
+
+            // Solicitar Token de Devolução (Regra dos 15 minutos)
+            const handleRequestToken = async (e) => {
+                e.preventDefault();
+                setLoading(true);
+                
+                const formData = new FormData(e.target);
+                const data = {
+                    itemId: selectedItem.id,
+                    requerenteName: formData.get('name'),
+                    email: formData.get('email'),
+                };
+
+                try {
+                    const res = await fetch(`${BACKEND_URL}/api/returns/request-token`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(data)
+                    });
+                    const result = await res.json();
+                    
+                    if (res.ok) {
+                        alert(result.message); // Usando alert padrão para garantir funcionamento sem pacotes extras
+                        setIsTokenModalOpen(false);
+                    } else {
+                        alert(result.error || "Erro ao gerar token.");
+                    }
+                } catch (err) {
+                    alert("Erro na conexão com o servidor do Render.");
+                } finally {
+                    setLoading(false);
+                }
+            };
+
+            // Validar Token e Concluir Entrega
+            const handleValidateToken = async () => {
+                if (!tokenInput || tokenInput.length !== 6) {
+                    alert("Por favor, insira o token de 6 dígitos.");
+                    return;
+                }
+
+                try {
+                    const res = await fetch(`${BACKEND_URL}/api/returns/validate`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ token: tokenInput })
+                    });
+                    
+                    if (res.ok) {
+                        setShowSuccessModal(true);
+                        setTokenInput('');
+                        fetchItems();
+                    } else {
+                        const result = await res.json();
+                        alert(result.error || "Token inválido ou expirado.");
+                    }
+                } catch (err) {
+                    alert("Erro ao validar o token.");
+                }
+            };
+
+            return (
+                <div>
+                    {/* Header */}
+                    <header className="border-b border-[#dfe7ee] bg-white/90 sticky top-0 z-30">
+                        <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                                <div className={`${navyClass} w-10 h-10 rounded-xl text-white flex items-center justify-center font-bold`}>
+                                    Q
+                                </div>
+                                <h1 className="text-xl font-bold text-[#10345c]">ACHEI!!</h1>
+                            </div>
+                            <span className="text-xs font-semibold text-gray-500 bg-gray-100 px-3 py-1.5 rounded-lg border">
+                                Painel do Funcionário
+                            </span>
+                        </div>
+                    </header>
+
+                    <main className="max-w-7xl mx-auto px-6 py-8">
+                        <div className="mb-6">
+                            <h2 className="text-3xl font-bold text-[#10345c]">Encontre o que você perdeu</h2>
+                            <p className="text-gray-500 mt-1">Veja os objetos disponíveis no balcão e filtre rapidamente por categoria.</p>
+                        </div>
+
+                        {/* Barra de Busca e Filtros */}
+                        <section className="bg-white rounded-[22px] border p-4 shadow-sm mb-8 space-y-4">
+                            <input 
+                                className="w-full px-4 py-3 border rounded-xl outline-none bg-gray-50/50"
+                                placeholder="🔍 Buscar por título, categoria ou local..."
+                                value={search}
+                                onChange={(e) => setSearch(e.target.value)}
+                            />
+                            
+                            <div className="flex flex-wrap gap-2">
+                                {['Todos', 'Eletrônicos', 'Documentos', 'Livros', 'Vestuário', 'Outros'].map((cat) => (
+                                    <button
+                                        key={cat}
+                                        onClick={() => setCategory(cat)}
+                                        className={`px-4 py-2 rounded-xl text-sm font-semibold transition ${
+                                            category === cat ? 'bg-[#10345c] text-white' : 'bg-gray-100 text-gray-600'
+                                        }`}
+                                    >
+                                        {cat}
+                                    </button>
+                                ))}
+                            </div>
+                        </section>
+
+                        {/* Grid de Itens */}
+                        {items.length === 0 ? (
+                            <div className="bg-white rounded-[22px] border p-12 text-center text-gray-500 shadow-sm">
+                                <p className="font-semibold text-lg text-[#10345c]">Nenhum item encontrado no estoque público</p>
+                            </div>
+                        ) : (
+                            <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-6">
+                                {items.map(item => (
+                                    <div key={item.id} className="bg-white rounded-[22px] border border-[#e1e9ef] overflow-hidden hover:shadow-lg transition flex flex-col justify-between p-4">
+                                        <div>
+                                            <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-2.5 py-1 rounded-full uppercase tracking-wider">
+                                                {item.category}
+                                            </span>
+                                            <h3 className="font-bold text-[#18324a] mt-2 text-lg">{item.title}</h3>
+                                            <p className="text-sm text-gray-500 mt-1">{item.description}</p>
+                                        </div>
+                                        <button 
+                                            onClick={() => { setSelectedItem(item); setIsTokenModalOpen(true); }}
+                                            className={`w-full mt-4 py-2.5 ${navyClass} text-white rounded-xl font-semibold`}
+                                        >
+                                            Solicitar Devolução
+                                        </button>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+
+                        {/* Validador de Código */}
+                        <section className="max-w-2xl mx-auto mt-16 p-8 bg-white rounded-[24px] border border-[#e2eaf0] shadow-md text-center">
+                            <h3 className="text-xl font-bold text-[#10345c]">Balcão de Atendimento: Validar Código</h3>
+                            <p className="text-gray-500 text-sm mt-1">Insira o código de 6 dígitos enviado ao e-mail do requerente.</p>
+                            <div className="mt-6 max-w-sm mx-auto">
+                                <input 
+                                    maxLength="6"
+                                    className="w-full text-center text-3xl font-bold tracking-[0.3em] p-3 border-2 rounded-xl outline-none bg-gray-50"
+                                    placeholder="000000"
+                                    value={tokenInput}
+                                    onChange={(e) => setTokenInput(e.target.value.replace(/\D/g, ''))}
+                                />
+                                <button 
+                                    onClick={handleValidateToken}
+                                    className={`w-full mt-4 py-3 ${navyClass} text-white rounded-xl font-bold`}
+                                >
+                                    Validar Token e Concluir
+                                </button>
+                            </div>
+                        </section>
+                    </main>
+
+                    {/* Modal Dados do Requerente */}
+                    {isTokenModalOpen && (
+                        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+                            <div className="bg-white rounded-[24px] w-full max-w-md p-6 shadow-2xl">
+                                <div className="flex justify-between items-center mb-5">
+                                    <h2 className="text-xl font-bold text-[#10345c]">Dados para Devolução</h2>
+                                    <button onClick={() => setIsTokenModalOpen(false)} className="font-bold text-gray-400">X</button>
+                                </div>
+                                <form onSubmit={handleRequestToken} className="space-y-4">
+                                    <input name="name" placeholder="Nome do Requerente" className="w-full p-3 border rounded-xl outline-none" required />
+                                    <input name="email" type="email" placeholder="E-mail do Requerente" className="w-full p-3 border rounded-xl outline-none" required />
+                                    <button type="submit" className={`w-full py-3 ${navyClass} text-white rounded-xl font-bold`}>
+                                        {loading ? "Gerando Código..." : "Gerar e Enviar Token"}
+                                    </button>
+                                </form>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Modal Sucesso */}
+                    {showSuccessModal && (
+                        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4">
+                            <div className="bg-white rounded-[24px] p-6 max-w-sm w-full text-center shadow-2xl border">
+                                <h3 className="text-2xl font-bold text-[#10345c]">Entrega Concluída!</h3>
+                                <p className="text-gray-500 text-sm mt-2">O token foi validado com sucesso. O item foi removido do estoque.</p>
+                                <button 
+                                    onClick={() => setShowSuccessModal(false)}
+                                    className={`w-full mt-5 py-3 ${navyClass} text-white rounded-xl font-bold`}
+                                ]>
+                                    Fechar e Voltar ao Feed
+                                </button>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<AcheiApp />);
     </script>
-  </body>
+</body>
 </html>
